@@ -1,6 +1,6 @@
 {
   "initial_capital": 200000,
-  "cash": 200003.04093499994,
+  "cash": 200007.42993499993,
   "margin_used": 0.0,
   "positions": {},
   "closed_trades": [
@@ -123,6 +123,21 @@
       "exit_reason": "stop",
       "horizon": "5m",
       "regime": "HIGH_VOL"
+    },
+    {
+      "ticker": "SPBE",
+      "direction": "SHORT",
+      "entry_time": "2026-01-22T13:22:41.360329+00:00",
+      "exit_time": "2026-01-22T13:23:49.567763+00:00",
+      "entry_price": 262.5,
+      "exit_price": 262.11499999999995,
+      "size": 76,
+      "leverage": 0.15,
+      "pnl": 4.389000000000544,
+      "pnl_pct": 0.022000000000002726,
+      "exit_reason": "take",
+      "horizon": "5m",
+      "regime": "HIGH_VOL"
     }
   ],
   "start_time": "2026-01-21T08:23:28.184733+00:00",
@@ -133,11 +148,12 @@
     "SMLT": "2026-01-21T11:57:22.212976+00:00",
     "HEAD": "2026-01-21T14:31:32.966063+00:00",
     "PLZL": "2026-01-21T20:08:15.910653+00:00",
-    "CBOM": "2026-01-22T10:45:39.738084+00:00"
+    "CBOM": "2026-01-22T10:45:39.738084+00:00",
+    "SPBE": "2026-01-22T13:52:41.360329+00:00"
   },
   "peak_equity": 219999.98993499993,
-  "daily_pnl": 3.040935000000425,
-  "weekly_pnl": 3.040935000000425,
+  "daily_pnl": 7.4299350000009685,
+  "weekly_pnl": 7.4299350000009685,
   "consecutive_losses": 0,
   "kill_switch_active": false,
   "kill_switch_reason": ""

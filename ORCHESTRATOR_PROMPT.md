@@ -129,15 +129,31 @@ daily_profit_target_rub = equity * 0.025
 
 ---
 
-### 5. Perplexity Research (FACT CHECK)
+### 5. Perplexity Research (NEWS & FACT CHECK) ✅ АКТИВЕН
 
-**Условие:** Только если `mode.research=true` и доступны инструменты `news.search`
+**Статус:** Включен (требуется PERPLEXITY_API_KEY)
 
 **Задача:**
-- Проверить фактологию новостей
-- Даты, конкретные события по тикеру
+- Поиск актуальных новостей по тикеру (последние 24-48 часов)
+- Оценка news_risk (low/med/high)
+- Проверка предстоящих событий (отчётность, дивиденды, сделки)
+- Факт-чекинг торговой идеи
 
-**Запрещено:** "Знать из головы" — только через news.search
+**Output:**
+```json
+{
+  "provider": "perplexity",
+  "decision": "LONG|SHORT|NO_TRADE|NO_OP",
+  "news_risk": "low|med|high|unknown",
+  "news_summary": "Краткое резюме новостей",
+  "key_facts": ["факт 1", "факт 2"],
+  "upcoming_events": ["событие 1"],
+  "confidence": 75,
+  "reasoning_bullets": ["..."]
+}
+```
+
+**Интеграция:** `moex_agent/perplexity.py`
 
 ---
 
