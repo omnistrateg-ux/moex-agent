@@ -31,6 +31,7 @@ from typing import Any, Dict, List, Optional
 
 from .anomaly import compute_anomalies, Direction
 from .config_schema import load_config
+from .db_state import StateStorage, load_trading_state, save_trading_state
 from .engine import PipelineEngine
 from .margin_risk_engine import (
     MarginRiskEngine,
@@ -175,13 +176,33 @@ class MarginAccount:
         )
 
     def save(self, path: Path = STATE_FILE) -> None:
-        """Save state to file."""
+        """Save state to database (PostgreSQL/SQLite) or file."""
+        # Сначала пробуем PostgreSQL/SQLite
+        try:
+            success = save_trading_state(self.to_dict(), key="margin_paper")
+            if success:
+                logger.debug("State saved to database")
+                return
+        except Exception as e:
+            logger.debug(f"Database save failed, falling back to file: {e}")
+
+        # Fallback на файл
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(self.to_dict(), ensure_ascii=False, indent=2))
 
     @classmethod
     def load(cls, path: Path = STATE_FILE) -> Optional["MarginAccount"]:
-        """Load state from file."""
+        """Load state from database (PostgreSQL/SQLite) or file."""
+        # Сначала пробуем PostgreSQL/SQLite
+        try:
+            data = load_trading_state(key="margin_paper")
+            if data and data.get("initial_capital"):
+                logger.info(f"Loaded state from database: {len(data.get('closed_trades', []))} trades")
+                return cls.from_dict(data)
+        except Exception as e:
+            logger.debug(f"Database load failed, trying file: {e}")
+
+        # Fallback на файл
         if not path.exists():
             return None
         try:

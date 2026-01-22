@@ -1,6 +1,6 @@
 {
   "initial_capital": 200000,
-  "cash": 200007.42993499993,
+  "cash": 200009.66013499993,
   "margin_used": 0.0,
   "positions": {},
   "closed_trades": [
@@ -138,6 +138,21 @@
       "exit_reason": "take",
       "horizon": "5m",
       "regime": "HIGH_VOL"
+    },
+    {
+      "ticker": "POSI",
+      "direction": "SHORT",
+      "entry_time": "2026-01-22T14:10:04.954333+00:00",
+      "exit_time": "2026-01-22T14:14:45.481355+00:00",
+      "entry_price": 1057.0,
+      "exit_price": 1055.9675000000002,
+      "size": 18,
+      "leverage": 0.12,
+      "pnl": 2.230199999999568,
+      "pnl_pct": 0.01172185430463349,
+      "exit_reason": "take",
+      "horizon": "1h",
+      "regime": "SIDEWAYS"
     }
   ],
   "start_time": "2026-01-21T08:23:28.184733+00:00",
@@ -149,11 +164,12 @@
     "HEAD": "2026-01-21T14:31:32.966063+00:00",
     "PLZL": "2026-01-21T20:08:15.910653+00:00",
     "CBOM": "2026-01-22T10:45:39.738084+00:00",
-    "SPBE": "2026-01-22T13:52:41.360329+00:00"
+    "SPBE": "2026-01-22T13:52:41.360329+00:00",
+    "POSI": "2026-01-22T14:40:04.954333+00:00"
   },
   "peak_equity": 219999.98993499993,
-  "daily_pnl": 7.4299350000009685,
-  "weekly_pnl": 7.4299350000009685,
+  "daily_pnl": 9.660135000000537,
+  "weekly_pnl": 9.660135000000537,
   "consecutive_losses": 0,
   "kill_switch_active": false,
   "kill_switch_reason": ""
