@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.moex-agent.paper-trading</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/artempobedinskij/Desktop/Projects/moex_agent/scripts/watchdog.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/artempobedinskij/Desktop/Projects/moex_agent</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/artempobedinskij/Desktop/Projects/moex_agent/data/launchd.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/artempobedinskij/Desktop/Projects/moex_agent/data/launchd_error.log</string>
+</dict>
+</plist>

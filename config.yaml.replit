@@ -1,0 +1,62 @@
+app:
+  poll_seconds: 5
+  cooldown_minutes: 30
+  top_n_anomalies: 10
+  max_workers: 10  # Replit has limited resources
+
+storage:
+  sqlite_path: "data/moex_agent.sqlite"
+
+universe:
+  engine: "stock"
+  market: "shares"
+  board: "TQBR"
+  tickers:
+    # Top 20 most liquid - reduced for Replit
+    - SBER
+    - GAZP
+    - LKOH
+    - ROSN
+    - NVTK
+    - GMKN
+    - T
+    - VTBR
+    - TATN
+    - SNGS
+    - SNGSP
+    - MTSS
+    - CHMF
+    - NLMK
+    - MAGN
+    - ALRS
+    - MOEX
+    - MGNT
+    - PHOR
+    - PLZL
+
+signals:
+  cooldown_minutes: 30
+  top_n_anomalies: 5
+  horizons:
+    - { name: "5m",  minutes: 5 }
+    - { name: "10m", minutes: 10 }
+    - { name: "30m", minutes: 30 }
+    - { name: "1h",  minutes: 60 }
+  p_threshold: 0.52
+  price_exit:
+    enabled: true
+    take_atr: 0.70
+    stop_atr: 0.40
+
+risk:
+  max_spread_bps: 200
+  min_turnover_rub_5m: 1000000
+
+qwen:
+  enabled: false  # Disable on Replit (no local Ollama)
+
+telegram:
+  enabled: true
+  # Use Replit Secrets - set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
+  bot_token: ""  # Will be loaded from environment
+  chat_id: ""    # Will be loaded from environment

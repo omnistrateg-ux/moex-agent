@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Database (too large for git)
+data/*.sqlite
+data/*.sqlite-wal
+data/*.sqlite-shm
+
+# But keep state files
+!data/margin_paper_state.json
+!data/paper_trading_state.json
+
+# Temp files
+*.tmp
+*.bak
+*.backup
+
+# Pytest
+.pytest_cache/
+
+# Claude
+.claude/
+
+# Archives (don't need in repo)
+*.zip
+
+# Old backups
+*.before_fix
+*.bak_recent

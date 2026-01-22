@@ -1,0 +1,77 @@
+# MOEX agent config (local, minimal-cost)
+app:
+  timezone: "Europe/Vaduz"   # your local tz; MOEX times are typically MSK
+  msk_timezone: "Europe/Moscow"
+  poll_seconds: 20           # how often we refresh & scan (ISS is not true realtime)
+  top_n_anomalies: 15
+  cooldown_minutes: 10       # do not spam same ticker
+
+storage:
+  sqlite_path: "./data/moex_agent.sqlite"
+
+universe:
+  engine: "stock"
+  market: "shares"
+  board: "TQBR"              # main board for many equities
+  tickers: ["SBER", "GAZP", "LKOH", "ROSN", "NVTK", "GMKN", "YNDX", "MTSS", "MGNT", "TCSG"]
+  # Optional benchmark: set engine/market/board/secid if you want alpha vs market.
+  # Many users just skip it at first.
+  benchmark:
+    enabled: false
+    engine: "stock"
+    market: "index"
+    board: "SNDX"
+    secid: "IMOEX"
+
+signals:
+  horizons:
+    - { name: "5m",  minutes: 5 }
+    - { name: "10m", minutes: 10 }
+    - { name: "30m", minutes: 30 }
+    - { name: "1h",  minutes: 60 }
+    - { name: "1d",  minutes: 1440 }
+    - { name: "1w",  minutes: 10080 }
+
+  p_threshold: 0.80
+  # If you want price-exit signals, these are ATR multipliers.
+  price_exit:
+    enabled: true
+    take_atr: 0.8
+    stop_atr: 0.6
+    entry_mode: "market"      # "market" or "limit_vwap_pullback"
+
+risk:
+  max_spread_bps: 35          # drop signals if spread is wider
+  min_turnover_rub_5m: 30_000_000
+  allow_out_of_hours: false
+
+qwen:
+  enabled: true
+  ollama_url: "http://localhost:11434"
+  model: "qwen2.5:7b-instruct"
+  max_tokens: 350
+
+telegram:
+  enabled: false
+  bot_token: "PUT_YOUR_TELEGRAM_BOT_TOKEN"
+  chat_id: "PUT_YOUR_CHAT_ID"
+app:
+  poll_seconds: 60
+universe:
+  tickers: ["SBER","GAZP","LKOH","GMKN","ROSN","NVTK","TATN","YDEX","MTSS","MAGN"]
+
+cd /Users/artempobedinskij/Desktop/Projects/moex_agent
+nano config.yaml
+
+universe:
+  tickers: ["SBER","GAZP",...]
+
+universe:
+  tickers:
+    - SBER
+    - GAZP
+    - LKOH
+    - ROSN
+    - NVTK
+
+

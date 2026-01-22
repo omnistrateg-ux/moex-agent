@@ -1,0 +1,99 @@
+app:
+  poll_seconds: 5
+  cooldown_minutes: 30
+  top_n_anomalies: 10
+  max_workers: 20  # параллельных HTTP запросов
+storage:
+  sqlite_path: "data/moex_agent.sqlite"
+
+universe:
+  engine: "stock"
+  market: "shares"
+  board: "TQBR"
+  tickers:
+    # Tier 1 — Высоколиквидные (blue chips)
+    - SBER      # Сбербанк
+    - SBERP     # Сбербанк преф
+    - GAZP      # Газпром
+    - LKOH      # Лукойл
+    - ROSN      # Роснефть
+    - NVTK      # Новатэк
+    - GMKN      # Норникель
+    - SIBN      # Газпром нефть
+    - T         # Т-Банк (Тинькофф)
+    - YDEX      # Яндекс (новый тикер)
+    - VTBR      # ВТБ
+    - PLZL      # Полюс
+    # Tier 2 — Средняя ликвидность
+    - TATN      # Татнефть
+    - TATNP     # Татнефть преф
+    - SNGS      # Сургутнефтегаз
+    - SNGSP     # Сургутнефтегаз преф
+    - OZON      # Озон
+    - X5        # X5 Retail (новый тикер)
+    - MTSS      # МТС
+    - CHMF      # Северсталь
+    - NLMK      # НЛМК
+    - MAGN      # ММК
+    - ALRS      # Алроса
+    - MOEX      # Мосбиржа
+    - AFLT      # Аэрофлот
+    - POSI      # Позитив
+    - IRAO      # Интер РАО
+    - HYDR      # РусГидро
+    - FEES      # ФСК ЕЭС
+    - RUAL      # РУСАЛ
+    - MGNT      # Магнит
+    - SMLT      # Самолёт
+    - SFIN      # ЭсЭфАй
+    - SOFL      # Софтлайн
+    - SPBE      # СПБ Биржа
+    - VKCO      # VK
+    - PHOR      # ФосАгро
+    - TRNFP     # Транснефть преф
+    - FLOT      # Совкомфлот
+    # Tier 3 — Ниже средней ликвидности
+    - PIKK      # ПИК
+    - CBOM      # Совкомбанк
+    - HEAD      # Хэдхантер
+    - LENT      # Лента
+    - OKEY      # О'Кей
+    - ENPG      # En+ Group
+
+signals:
+  cooldown_minutes: 30
+  top_n_anomalies: 5
+  horizons:
+    - { name: "5m",  minutes: 5 }
+    - { name: "10m", minutes: 10 }
+    - { name: "30m", minutes: 30 }
+    - { name: "1h",  minutes: 60 }
+    - { name: "1d",  minutes: 1440 }
+    - { name: "1w",  minutes: 10080 }
+  p_threshold: 0.52  # Optimized for profit (was 0.35)
+  price_exit:
+    enabled: true
+    take_atr: 0.70  # Optimized (was default)
+    stop_atr: 0.40  # Optimized (was default)
+
+risk:
+  max_spread_bps: 200
+  min_turnover_rub_5m: 1000000
+
+qwen:
+  enabled: true
+  ollama_url: "http://localhost:11434"
+  model: "qwen2.5:7b-instruct"
+  max_tokens: 500
+  temperature: 0.3
+
+telegram:
+  enabled: true
+  bot_token: "8429791732:AAFRkt_xV42XV0L4U5IS5DK6Dkstn_XROAk"
+  chat_id: "120171956"
+  # Отправлять только сигналы с этими рекомендациями:
+  send_recommendations:
+    - STRONG_BUY
+    - BUY
+    - STRONG_SELL
+    - SELL

@@ -1,0 +1,19 @@
+[Unit]
+Description=MOEX Agent Paper Trading
+After=network.target
+
+[Service]
+Type=simple
+User=artempobedinskij
+WorkingDirectory=/Users/artempobedinskij/Desktop/Projects/moex_agent
+ExecStart=/Users/artempobedinskij/Desktop/Projects/moex_agent/.venv/bin/python -m moex_agent.paper_trading --capital 200000 --duration-days 7
+Restart=always
+RestartSec=10
+StandardOutput=append:/Users/artempobedinskij/Desktop/Projects/moex_agent/data/paper_trading.log
+StandardError=append:/Users/artempobedinskij/Desktop/Projects/moex_agent/data/paper_trading_error.log
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
