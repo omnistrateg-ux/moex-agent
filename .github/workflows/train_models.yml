@@ -1,0 +1,92 @@
+name: Train ML Models
+
+on:
+  # Запуск вручную
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'Days of data to fetch'
+        required: true
+        default: '30'
+
+  # Автоматически каждое воскресенье в 3:00 UTC
+  schedule:
+    - cron: '0 3 * * 0'
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pandas numpy scikit-learn joblib pyyaml requests
+
+      - name: Create directories
+        run: |
+          mkdir -p data models
+
+      - name: Bootstrap data from MOEX
+        run: |
+          python -c "
+          import sys
+          sys.path.insert(0, '.')
+          from moex_agent.config_schema import load_config
+          from moex_agent.storage import connect
+          from moex_agent.bootstrap import bootstrap_recent
+
+          config = load_config()
+          conn = connect(config.sqlite_path)
+          bootstrap_recent(conn, config, days=${{ github.event.inputs.days || 30 }})
+          conn.close()
+          print('Bootstrap complete!')
+          "
+
+      - name: Train models
+        run: |
+          python -m moex_agent.advanced_train
+
+      - name: Upload models as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trained-models
+          path: |
+            models/*.joblib
+            models/meta.json
+          retention-days: 30
+
+      - name: Commit and push models
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add models/
+          git diff --staged --quiet || git commit -m "Auto-retrain models $(date +%Y-%m-%d)
+
+          Co-Authored-By: GitHub Actions <action@github.com>"
+          git push
+
+      - name: Send Telegram notification
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            MESSAGE="✅ Модели переобучены успешно!"
+          else
+            MESSAGE="❌ Ошибка переобучения моделей"
+          fi
+
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d text="${MESSAGE}"
