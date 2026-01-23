@@ -8,9 +8,11 @@
 - 🤖 **ML-модели** для прогнозирования направления цены (4 горизонта: 5m, 10m, 30m, 1h)
 - 📊 **Walk-Forward валидация** — честные метрики без data leakage
 - ⚡ **Real-time мониторинг** 46 акций MOEX
-- 🛡️ **Risk Engine** — Kill-Switch, Dynamic Leverage, Regime Detection
+- 🛡️ **Risk Engine** — Kill-Switch, Dynamic Leverage, Regime Detection, Tier System
 - 📱 **Telegram уведомления** о сигналах и сделках
-- 🌐 **Web Dashboard** для мониторинга
+- 🌐 **Web Dashboard** с Equity Curve и Day Mode индикаторами
+- 🧠 **Multi-LLM Orchestrator** — консенсус 5 AI-аналитиков
+- 🎯 **CONTINUATION_MODE** — защита прибыли после достижения 5% цели
 
 ---
 
@@ -93,7 +95,8 @@ moex_agent/
 │   ├── engine.py               # Основной pipeline
 │   │
 │   │── # === RISK MANAGEMENT ===
-│   ├── margin_risk_engine.py   # Kill-Switch, Leverage, Regime
+│   ├── margin_risk_engine.py   # Kill-Switch, Leverage, Regime, Tiers
+│   ├── orchestrator.py         # Multi-LLM Consensus Engine
 │   ├── bcs_broker.py           # Лимиты брокера БКС
 │   ├── risk.py                 # Базовые риск-проверки
 │   │
@@ -205,12 +208,36 @@ Signal + Risk OK → Open Position → Monitor → Close (Take/Stop/Timeout)
 
 | Параметр | Лимит |
 |----------|-------|
+| Daily target | **5%** |
 | Max loss per trade | 0.5% equity |
 | Max daily loss | 2% |
 | Max weekly loss | 5% |
 | Max drawdown | 10% |
-| Kill after losses | 5 подряд |
+| Kill after losses | **2 подряд** → HALT_DAY |
 | Disabled horizons | 1d, 1w (gap risk) |
+
+### Tier System (Trade Classification)
+
+| Tier | Min R | Min PnL% | Risk% | Действие |
+|------|-------|----------|-------|----------|
+| **A+** | ≥2.3 | ≥1.5% | 1.5% | Лучшие сделки |
+| **A** | ≥2.0 | ≥1.0% | 1.2% | Качественные |
+| **B** | ≥1.6 | ≥0.6% | 0.8% | Допустимые |
+| **C** | <1.6 | - | 0% | **NO TRADE** |
+
+### Cost Gate
+```
+(spread + fees + slippage) ≤ 20% of expected_gain
+```
+
+### CONTINUATION_MODE (после 5% цели)
+
+| Параметр | Значение |
+|----------|----------|
+| risk_multiplier | 0.5-0.7 |
+| max_additional_trades | 2 |
+| min_expected_R | 2.0 |
+| profit_protection | 80% от достигнутой прибыли |
 
 ### Dynamic Leverage Formula
 ```
@@ -225,6 +252,31 @@ multipliers:
 
 final_leverage = base_lev * product(multipliers)
 ```
+
+---
+
+## 🧠 Multi-LLM Orchestrator
+
+Система использует 5 LLM-аналитиков для консенсуса:
+
+| # | Провайдер | Роль | Проверяет |
+|---|-----------|------|-----------|
+| 1 | **OpenAI** (GPT-4o) | Structure & Logic | R-расчёты, cost gate, risk limits |
+| 2 | **Qwen** | Alternative Hypotheses | Другие тикеры, сетапы, таймфреймы |
+| 3 | **Grok** | Failure Modes | Red flags, worst-case сценарии |
+| 4 | **YandexGPT** | News Interpreter | STUB (для будущей интеграции) |
+| 5 | **Perplexity** | News & Fact Check | Новости 24-48ч, события, факт-чек |
+
+### Правила консенсуса:
+- **TRADE**: ≥3 SUPPORT + 0 REJECT
+- **NO_TRADE**: ≥2 REJECT или <3 SUPPORT
+- **HALT_DAY**: Сработал kill-switch
+
+### Промпты аналитиков:
+- `OPENAI_ANALYST_PROMPT.md`
+- `QWEN_ANALYST_PROMPT.md`
+- `GROK_ANALYST_PROMPT.md`
+- `PERPLEXITY_ANALYST_PROMPT.md`
 
 ---
 
@@ -352,15 +404,30 @@ telegram:
 
 **Главные файлы:**
 - `margin_paper_trading.py` — основной trading loop
-- `margin_risk_engine.py` — риск-менеджмент
-- `webapp.py` — web интерфейс
+- `margin_risk_engine.py` — риск-менеджмент с Tier системой
+- `orchestrator.py` — Multi-LLM консенсус (5 аналитиков)
+- `webapp.py` — web интерфейс с Equity Curve
 - `features.py` — feature engineering
 - `predictor.py` — ML inference
 
+**Промпты для LLM-аналитиков:**
+- `REPLIT_ORCHESTRATOR_PROMPT.md` — главный системный промпт
+- `OPENAI_ANALYST_PROMPT.md` — GPT-4o (Structure & Logic)
+- `QWEN_ANALYST_PROMPT.md` — Qwen (Alternative Hypotheses)
+- `GROK_ANALYST_PROMPT.md` — Grok (Failure Modes)
+- `PERPLEXITY_ANALYST_PROMPT.md` — Perplexity (News & Fact Check)
+
 **Для веб-продукта:**
 1. Запустить `webapp.py` на порту 8080
-2. Dashboard показывает: equity, позиции, сигналы, историю
+2. Dashboard показывает: equity curve, day mode, позиции, сигналы, историю
 3. API возвращает JSON для фронтенда
+
+**Ключевые параметры:**
+- Daily target: **5%**
+- Max consecutive losses: **2** (затем HALT_DAY)
+- Tier A+: R ≥ 2.3, PnL ≥ 1.5%
+- Cost gate: costs ≤ 20% of expected gain
+- CONTINUATION_MODE: после 5% — max 2 дополнительные сделки
 
 **Ограничения Replit:**
 - Нет GPU (но модели CPU-only)

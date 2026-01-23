@@ -399,6 +399,8 @@ def get_equity():
         "consecutive_losses": state.get("consecutive_losses", 0),
         "kill_switch_active": state.get("kill_switch_active", False),
         "kill_switch_reason": state.get("kill_switch_reason", ""),
+        "day_mode": state.get("day_mode", "NORMAL"),
+        "daily_target_reached": state.get("daily_target_reached", False),
     }
 
 
@@ -595,7 +597,28 @@ DASHBOARD_HTML = """
             margin-top: 15px;
             line-height: 1.6;
         }
+        /* Equity Chart */
+        .chart-container {
+            background: #16213e;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            margin: 20px 0;
+        }
+        .chart-container canvas {
+            max-height: 300px;
+        }
+        /* Tier badges */
+        .badge-tier-a-plus { background: #0a6b50; color: #4ade80; }
+        .badge-tier-a { background: #0a4d6b; color: #60a5fa; }
+        .badge-tier-b { background: #6b4d0a; color: #fbbf24; }
+        .badge-tier-c { background: #4a4a4a; color: #a0a0a0; }
+        /* Day mode */
+        .day-mode-normal { color: #60a5fa; }
+        .day-mode-continuation { color: #4ade80; }
+        .day-mode-halt { color: #f87171; }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="container">
@@ -657,6 +680,21 @@ DASHBOARD_HTML = """
                 <div class="card-title">Loss Streak</div>
                 <div class="card-value" id="lossStreak">-</div>
             </div>
+            <div class="card">
+                <div class="card-title">Day Mode</div>
+                <div class="card-value" id="dayMode">NORMAL</div>
+            </div>
+            <div class="card">
+                <div class="card-title">Daily Target</div>
+                <div class="card-value">5%</div>
+                <div class="card-subtitle" id="targetProgress">-</div>
+            </div>
+        </div>
+
+        <!-- Equity Curve Chart -->
+        <h2>Equity Curve</h2>
+        <div class="chart-container">
+            <canvas id="equityChart"></canvas>
         </div>
 
         <!-- Open Positions -->
@@ -763,6 +801,20 @@ DASHBOARD_HTML = """
                 document.getElementById('tradesCount').textContent = equity.wins + 'W / ' + equity.losses + 'L';
                 document.getElementById('profitFactor').textContent = equity.profit_factor.toFixed(2);
                 document.getElementById('lossStreak').textContent = equity.consecutive_losses;
+
+                // Day mode and target progress
+                const dayModeEl = document.getElementById('dayMode');
+                const dayMode = equity.day_mode || 'NORMAL';
+                dayModeEl.textContent = dayMode;
+                dayModeEl.className = 'card-value day-mode-' + dayMode.toLowerCase();
+
+                const dailyPnlPct = (equity.daily_pnl / equity.initial_capital * 100) || 0;
+                const targetProgressEl = document.getElementById('targetProgress');
+                targetProgressEl.textContent = dailyPnlPct.toFixed(2) + '% / 5%';
+                targetProgressEl.className = 'card-subtitle ' + (dailyPnlPct >= 5 ? 'pnl-positive' : '');
+
+                // Update equity chart
+                await updateEquityChart(equity);
 
                 // Kill switch warning
                 const killSwitchEl = document.getElementById('killSwitch');
@@ -926,6 +978,131 @@ DASHBOARD_HTML = """
         window.onclick = function(event) {
             const modal = document.getElementById('tradeModal');
             if (event.target === modal) closeModal();
+        }
+
+        // Equity Chart
+        let equityChart = null;
+        const equityHistory = [];
+        const maxHistoryPoints = 100;
+
+        async function updateEquityChart(equity) {
+            // Add current point to history
+            const now = new Date();
+            equityHistory.push({
+                time: now.toLocaleTimeString(),
+                equity: equity.equity,
+                pnl: equity.total_pnl
+            });
+
+            // Keep only last N points
+            if (equityHistory.length > maxHistoryPoints) {
+                equityHistory.shift();
+            }
+
+            const ctx = document.getElementById('equityChart').getContext('2d');
+
+            if (equityChart) {
+                // Update existing chart
+                equityChart.data.labels = equityHistory.map(p => p.time);
+                equityChart.data.datasets[0].data = equityHistory.map(p => p.equity);
+                equityChart.update('none');
+            } else {
+                // Create new chart
+                equityChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: equityHistory.map(p => p.time),
+                        datasets: [{
+                            label: 'Equity (RUB)',
+                            data: equityHistory.map(p => p.equity),
+                            borderColor: '#00d9ff',
+                            backgroundColor: 'rgba(0, 217, 255, 0.1)',
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 2,
+                            pointHoverRadius: 5
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return context.parsed.y.toLocaleString() + ' RUB';
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                },
+                                ticks: {
+                                    color: '#888',
+                                    callback: function(value) {
+                                        return value.toLocaleString();
+                                    }
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.05)'
+                                },
+                                ticks: {
+                                    color: '#888',
+                                    maxTicksLimit: 10
+                                }
+                            }
+                        },
+                        interaction: {
+                            intersect: false,
+                            mode: 'index'
+                        }
+                    }
+                });
+            }
+
+            // Also try to load historical data from trades
+            try {
+                const tradesRes = await fetch('/api/trades?limit=50');
+                const trades = await tradesRes.json();
+
+                if (trades.length > 0 && equityHistory.length < 5) {
+                    // Reconstruct equity history from trades
+                    let runningEquity = equity.initial_capital;
+                    const historicalPoints = [];
+
+                    // Sort trades by exit time
+                    const sortedTrades = [...trades].reverse();
+
+                    for (const t of sortedTrades) {
+                        runningEquity += t.pnl;
+                        historicalPoints.push({
+                            time: new Date(t.exit_time).toLocaleTimeString(),
+                            equity: runningEquity,
+                            pnl: t.pnl
+                        });
+                    }
+
+                    // Add to history if we have historical data
+                    if (historicalPoints.length > equityHistory.length) {
+                        equityHistory.length = 0;
+                        equityHistory.push(...historicalPoints);
+
+                        equityChart.data.labels = equityHistory.map(p => p.time);
+                        equityChart.data.datasets[0].data = equityHistory.map(p => p.equity);
+                        equityChart.update('none');
+                    }
+                }
+            } catch (e) {
+                console.log('Could not load historical trades for chart:', e);
+            }
         }
 
         refresh();

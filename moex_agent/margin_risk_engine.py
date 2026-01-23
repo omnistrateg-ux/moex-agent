@@ -45,17 +45,65 @@ class RiskDecision(str, Enum):
     DISABLE = "DISABLE"    # No trading
 
 
+class TradeTier(str, Enum):
+    """Trade tier classification based on expected R and PnL."""
+    A_PLUS = "A_PLUS"  # R >= 2.3, expected_pnl >= 1.5%
+    A = "A"            # R >= 2.0, expected_pnl >= 1.0%
+    B = "B"            # R >= 1.6, expected_pnl >= 0.6%
+    C = "C"            # R < 1.6 - NO TRADE
+    NONE = "NONE"
+
+
+class DayMode(str, Enum):
+    """Trading day mode."""
+    NORMAL = "NORMAL"                # Standard trading
+    CONTINUATION = "CONTINUATION"    # After daily target reached
+    HALT = "HALT"                    # Trading stopped for the day
+
+
+@dataclass
+class TierConfig:
+    """Tier thresholds for trade classification."""
+    # Expected R thresholds
+    a_plus_min_r: float = 2.3
+    a_min_r: float = 2.0
+    b_min_r: float = 1.6
+
+    # Expected PnL thresholds (% of equity)
+    a_plus_min_pnl_pct: float = 1.5
+    a_min_pnl_pct: float = 1.0
+    b_min_pnl_pct: float = 0.6
+
+    # Risk per trade by tier (% of equity)
+    a_plus_risk_pct: float = 1.5
+    a_risk_pct: float = 1.2
+    b_risk_pct: float = 0.8
+
+    # Cost gate: max (spread + fees + slippage) as % of expected gain
+    max_cost_ratio: float = 0.20  # 20%
+
+
+@dataclass
+class ContinuationConfig:
+    """Configuration for CONTINUATION_MODE after daily target."""
+    daily_target_pct: float = 5.0            # 5% daily target
+    risk_multiplier: float = 0.5             # Reduce risk by 50% in continuation
+    max_additional_trades: int = 2           # Max 2 trades after target
+    min_expected_r: float = 2.0              # Only high R trades
+    profit_protection_pct: float = 80.0      # Stop if PnL drops below 80% of target
+
+
 @dataclass
 class KillSwitchConfig:
     """Kill-switch thresholds."""
     max_loss_per_trade_pct: float = 0.5      # 0.5% equity max loss per trade
     max_daily_loss_pct: float = 2.0          # Stop trading for day
     max_weekly_loss_pct: float = 5.0         # Stop trading for week
-    max_consecutive_losses: int = 5          # Kill after 5 losses in a row
+    max_consecutive_losses: int = 2          # Kill after 2 losses in a row (HALT_DAY)
     max_drawdown_pct: float = 10.0           # Full stop, manual review required
     pause_after_losses: int = 3              # Reduce leverage after 3 losses
     cooldown_after_kill_minutes: int = 60    # Minimum cooldown after kill
-    max_trades_per_day: int = 9999           # БКС не ограничивает, убрано ограничение
+    max_trades_per_day: int = 3              # Max attempts per day (can be 4 if 1st is win)
 
 
 @dataclass
@@ -80,12 +128,20 @@ class RiskState:
     consecutive_wins: int = 0
     trades_today: int = 0
     losses_today: int = 0
+    wins_today: int = 0
     last_trade_time: Optional[datetime] = None
     kill_switch_active: bool = False
     kill_switch_reason: Optional[str] = None
     kill_switch_until: Optional[datetime] = None
     day_start: Optional[datetime] = None
     week_start: Optional[datetime] = None
+
+    # CONTINUATION_MODE tracking
+    day_mode: DayMode = DayMode.NORMAL
+    daily_target_reached: bool = False
+    daily_target_pnl: float = 0.0  # PnL when target was reached
+    continuation_trades: int = 0   # Trades made in continuation mode
+    first_trade_win: bool = False  # Was first trade of day a win?
 
     @property
     def current_drawdown_pct(self) -> float:
@@ -637,6 +693,288 @@ class MarginRiskEngine:
 
         logger.warning("KILL-SWITCH MANUALLY RESET")
         return True
+
+    # ============================================================
+    # TIER CLASSIFICATION
+    # ============================================================
+
+    def classify_tier(
+        self,
+        expected_r: float,
+        expected_pnl_pct: float,
+        regime: MarketRegime,
+        tier_config: Optional[TierConfig] = None,
+    ) -> Tuple[TradeTier, float]:
+        """
+        Classify trade tier and return risk percentage.
+
+        Returns:
+            (tier, risk_pct)
+        """
+        cfg = tier_config or TierConfig()
+
+        # Tier A+ requires trend/event regime
+        is_favorable_regime = regime in (MarketRegime.BULL, MarketRegime.BEAR)
+
+        if (expected_r >= cfg.a_plus_min_r and
+            expected_pnl_pct >= cfg.a_plus_min_pnl_pct and
+            is_favorable_regime):
+            return TradeTier.A_PLUS, cfg.a_plus_risk_pct
+
+        if expected_r >= cfg.a_min_r and expected_pnl_pct >= cfg.a_min_pnl_pct:
+            return TradeTier.A, cfg.a_risk_pct
+
+        if expected_r >= cfg.b_min_r and expected_pnl_pct >= cfg.b_min_pnl_pct:
+            return TradeTier.B, cfg.b_risk_pct
+
+        # Tier C - NO TRADE
+        return TradeTier.C, 0.0
+
+    # ============================================================
+    # COST GATE
+    # ============================================================
+
+    def check_cost_gate(
+        self,
+        spread_pct: float,
+        expected_gain_pct: float,
+        fees_pct: float = 0.05,
+        slippage_pct: float = 0.10,
+        tier_config: Optional[TierConfig] = None,
+    ) -> Tuple[bool, float, str]:
+        """
+        Check if trade passes cost gate.
+
+        Cost gate: (spread + fees + slippage) <= 20% of expected gain
+
+        Returns:
+            (passed, cost_ratio, reason)
+        """
+        cfg = tier_config or TierConfig()
+
+        total_cost_pct = spread_pct + fees_pct + slippage_pct
+
+        if expected_gain_pct <= 0:
+            return False, 1.0, "Expected gain <= 0"
+
+        cost_ratio = total_cost_pct / expected_gain_pct
+
+        if cost_ratio <= cfg.max_cost_ratio:
+            return True, cost_ratio, f"Cost gate PASSED: {cost_ratio:.1%} <= {cfg.max_cost_ratio:.0%}"
+        else:
+            return False, cost_ratio, f"Cost gate FAILED: {cost_ratio:.1%} > {cfg.max_cost_ratio:.0%}"
+
+    # ============================================================
+    # CONTINUATION MODE
+    # ============================================================
+
+    def check_daily_target(
+        self,
+        continuation_config: Optional[ContinuationConfig] = None,
+    ) -> Tuple[bool, float]:
+        """
+        Check if daily target is reached.
+
+        Returns:
+            (target_reached, daily_pnl_pct)
+        """
+        cfg = continuation_config or ContinuationConfig()
+
+        if self.state.equity <= 0:
+            return False, 0.0
+
+        daily_pnl_pct = (self.state.daily_pnl / self.state.equity) * 100
+
+        target_reached = daily_pnl_pct >= cfg.daily_target_pct
+
+        return target_reached, daily_pnl_pct
+
+    def enter_continuation_mode(
+        self,
+        continuation_config: Optional[ContinuationConfig] = None,
+    ) -> None:
+        """Enter CONTINUATION_MODE after reaching daily target."""
+        cfg = continuation_config or ContinuationConfig()
+
+        self.state.day_mode = DayMode.CONTINUATION
+        self.state.daily_target_reached = True
+        self.state.daily_target_pnl = self.state.daily_pnl
+        self.state.continuation_trades = 0
+
+        logger.info(
+            f"CONTINUATION_MODE activated: daily_pnl={self.state.daily_pnl:+.0f}, "
+            f"target_pnl={self.state.daily_target_pnl:.0f}"
+        )
+
+    def check_continuation_allowed(
+        self,
+        tier: TradeTier,
+        expected_r: float,
+        regime: MarketRegime,
+        continuation_config: Optional[ContinuationConfig] = None,
+    ) -> Tuple[bool, str]:
+        """
+        Check if trade is allowed in CONTINUATION_MODE.
+
+        Returns:
+            (allowed, reason)
+        """
+        cfg = continuation_config or ContinuationConfig()
+
+        # Not in continuation mode - allow normal trading
+        if self.state.day_mode != DayMode.CONTINUATION:
+            return True, "Normal trading mode"
+
+        # Check if max continuation trades reached
+        if self.state.continuation_trades >= cfg.max_additional_trades:
+            return False, f"Max continuation trades ({cfg.max_additional_trades}) reached"
+
+        # Only Tier A+ or A allowed
+        if tier not in (TradeTier.A_PLUS, TradeTier.A):
+            return False, f"Tier {tier.value} not allowed in continuation (need A+ or A)"
+
+        # Check expected R
+        if expected_r < cfg.min_expected_r:
+            return False, f"Expected R {expected_r:.1f} < {cfg.min_expected_r} required"
+
+        # Check regime
+        if regime not in (MarketRegime.BULL, MarketRegime.BEAR):
+            return False, f"Regime {regime.value} not favorable for continuation"
+
+        return True, "Continuation trade allowed"
+
+    def check_profit_protection(
+        self,
+        continuation_config: Optional[ContinuationConfig] = None,
+    ) -> Tuple[bool, str]:
+        """
+        Check if profit protection triggered (stop day).
+
+        Returns:
+            (should_stop, reason)
+        """
+        cfg = continuation_config or ContinuationConfig()
+
+        if self.state.day_mode != DayMode.CONTINUATION:
+            return False, "Not in continuation mode"
+
+        # Check if PnL dropped below protection level
+        protection_threshold = self.state.daily_target_pnl * (cfg.profit_protection_pct / 100)
+
+        if self.state.daily_pnl < protection_threshold:
+            reason = (
+                f"PROFIT PROTECTION: PnL {self.state.daily_pnl:.0f} < "
+                f"{cfg.profit_protection_pct:.0f}% of target ({protection_threshold:.0f})"
+            )
+            self.state.day_mode = DayMode.HALT
+            return True, reason
+
+        return False, "Profit protected"
+
+    def update_day_mode(
+        self,
+        continuation_config: Optional[ContinuationConfig] = None,
+    ) -> DayMode:
+        """
+        Update day mode based on current state.
+
+        Returns:
+            Current day mode
+        """
+        cfg = continuation_config or ContinuationConfig()
+
+        # Already halted
+        if self.state.day_mode == DayMode.HALT:
+            return DayMode.HALT
+
+        # Check kill switch
+        kill_active, _ = self.check_kill_switch()
+        if kill_active:
+            self.state.day_mode = DayMode.HALT
+            return DayMode.HALT
+
+        # Check if target reached (transition to continuation)
+        if self.state.day_mode == DayMode.NORMAL:
+            target_reached, daily_pnl_pct = self.check_daily_target(cfg)
+            if target_reached:
+                self.enter_continuation_mode(cfg)
+                return DayMode.CONTINUATION
+
+        # Check profit protection in continuation
+        if self.state.day_mode == DayMode.CONTINUATION:
+            should_stop, _ = self.check_profit_protection(cfg)
+            if should_stop:
+                return DayMode.HALT
+
+        return self.state.day_mode
+
+    def record_trade_result_extended(
+        self,
+        pnl: float,
+        is_win: bool,
+        continuation_config: Optional[ContinuationConfig] = None,
+    ) -> None:
+        """
+        Extended trade recording with continuation mode support.
+        """
+        # Track first trade of day
+        if self.state.trades_today == 0:
+            self.state.first_trade_win = is_win
+            self.state.wins_today = 0
+
+        # Record trade
+        self.record_trade_result(pnl, is_win)
+
+        # Update wins today
+        if is_win:
+            self.state.wins_today += 1
+
+        # Update continuation trades counter
+        if self.state.day_mode == DayMode.CONTINUATION:
+            self.state.continuation_trades += 1
+
+            # In continuation mode, any loss = HALT
+            if not is_win:
+                self.state.day_mode = DayMode.HALT
+                logger.warning("CONTINUATION LOSS - switching to HALT mode")
+
+        # Update day mode
+        self.update_day_mode(continuation_config)
+
+    def get_risk_for_tier(
+        self,
+        tier: TradeTier,
+        tier_config: Optional[TierConfig] = None,
+        continuation_config: Optional[ContinuationConfig] = None,
+    ) -> float:
+        """
+        Get risk percentage for given tier, accounting for continuation mode.
+
+        Returns:
+            risk_pct (percentage of equity)
+        """
+        cfg = tier_config or TierConfig()
+        cont_cfg = continuation_config or ContinuationConfig()
+
+        # Base risk by tier
+        base_risk = {
+            TradeTier.A_PLUS: cfg.a_plus_risk_pct,
+            TradeTier.A: cfg.a_risk_pct,
+            TradeTier.B: cfg.b_risk_pct,
+            TradeTier.C: 0.0,
+            TradeTier.NONE: 0.0,
+        }.get(tier, 0.0)
+
+        # Apply continuation multiplier
+        if self.state.day_mode == DayMode.CONTINUATION:
+            base_risk *= cont_cfg.risk_multiplier
+
+        # Never increase risk after loss
+        if self.state.daily_pnl < 0:
+            # Cap at 80% of base risk if in drawdown
+            base_risk *= 0.8
+
+        return base_risk
 
 
 def stress_test_strategy(

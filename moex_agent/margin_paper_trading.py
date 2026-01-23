@@ -254,7 +254,7 @@ class MarginPaperTrader:
                 max_loss_per_trade_pct=0.5,
                 max_daily_loss_pct=2.0,
                 max_weekly_loss_pct=5.0,
-                max_consecutive_losses=5,
+                max_consecutive_losses=2,  # HALT_DAY after 2 losses
                 max_drawdown_pct=10.0,
             ),
             leverage_config=LeverageConfig(
