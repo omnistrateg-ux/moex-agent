@@ -55,6 +55,7 @@ class KillSwitchConfig:
     max_drawdown_pct: float = 10.0           # Full stop, manual review required
     pause_after_losses: int = 3              # Reduce leverage after 3 losses
     cooldown_after_kill_minutes: int = 60    # Minimum cooldown after kill
+    max_trades_per_day: int = 9999           # БКС не ограничивает, убрано ограничение
 
 
 @dataclass
@@ -263,6 +264,12 @@ class MarginRiskEngine:
         if self.state.current_drawdown_pct >= self.kill_config.max_drawdown_pct:
             reason = f"KILL: Drawdown {self.state.current_drawdown_pct:.1f}% >= {self.kill_config.max_drawdown_pct}%"
             self._activate_kill_switch(reason, permanent=True)
+            return True, reason
+
+        # Check max trades per day (БКС: без ограничений, 9999 по умолчанию)
+        if self.state.trades_today >= self.kill_config.max_trades_per_day:
+            reason = f"KILL: Достигнут лимит сделок за день ({self.state.trades_today})"
+            self._activate_kill_switch(reason)
             return True, reason
 
         return False, None
