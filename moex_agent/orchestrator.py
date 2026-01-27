@@ -1,12 +1,20 @@
 """
 MOEX Trading Orchestrator - Multi-LLM Consensus Engine
 
-Coordinates 5 LLM analysts to form trading decisions:
-1. OpenAI (GPT-4o) - Structure & Logic
-2. Qwen - Alternative Hypotheses
-3. Grok - Failure Modes / Stress Test
-4. YandexGPT - News Interpreter (STUB)
-5. Perplexity - News & Fact Check
+Coordinates LLM analysts to form trading decisions.
+
+For Yandex Cloud deployment:
+- YandexGPT Pro - Main Analyst (primary decision maker)
+- YandexGPT Pro - Risk Validator
+- YandexGPT Pro - Market Context
+- YandexGPT Lite - News Scanner
+- YandexGPT Pro - Devil's Advocate
+
+Alternative providers (optional):
+- OpenAI (GPT-4o) - Structure & Logic
+- Qwen - Alternative Hypotheses
+- Grok - Failure Modes / Stress Test
+- Perplexity - News & Fact Check
 
 Daily target: 5% return
 Mode: Aggressive but controlled
@@ -15,6 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -28,6 +37,13 @@ from .margin_risk_engine import (
     TierConfig,
     TradeTier,
 )
+
+# Optional: YandexGPT integration
+try:
+    from .yandex_cloud import YandexGPTAnalyst, create_yandexgpt_analyst
+    YANDEXGPT_AVAILABLE = True
+except ImportError:
+    YANDEXGPT_AVAILABLE = False
 
 logger = logging.getLogger("moex_agent.orchestrator")
 
@@ -268,14 +284,87 @@ class TradingOrchestrator:
             )
 
     def _call_yandexgpt(self, state_json: Dict) -> AnalystResponse:
-        """Call YandexGPT (STUB - disabled)."""
-        return AnalystResponse(
-            provider="yandexgpt",
-            decision=AnalystDecision.NO_OP,
-            verdict=AnalystVerdict.STUB,
-            news_risk="unknown",
-            reasoning=["provider_disabled_stub"],
-        )
+        """Call YandexGPT analyst (Main Analyst for Yandex Cloud)."""
+        if not YANDEXGPT_AVAILABLE:
+            return AnalystResponse(
+                provider="yandexgpt",
+                decision=AnalystDecision.NO_OP,
+                verdict=AnalystVerdict.UNUSED,
+                reasoning=["YandexGPT module not available"],
+            )
+
+        # Check if YandexGPT is configured
+        if not os.getenv("YANDEX_CLOUD_FOLDER_ID"):
+            return AnalystResponse(
+                provider="yandexgpt",
+                decision=AnalystDecision.NO_OP,
+                verdict=AnalystVerdict.STUB,
+                news_risk="unknown",
+                reasoning=["YandexGPT not configured (missing YANDEX_CLOUD_FOLDER_ID)"],
+            )
+
+        try:
+            analyst = create_yandexgpt_analyst()
+            result = analyst.analyze(state_json, role="main")
+            analyst.close()
+
+            # Parse response into AnalystResponse
+            decision_str = result.get("decision", "NO_OP")
+            decision = AnalystDecision.NO_OP
+            if decision_str == "LONG":
+                decision = AnalystDecision.LONG
+            elif decision_str == "SHORT":
+                decision = AnalystDecision.SHORT
+            elif decision_str == "NO_TRADE":
+                decision = AnalystDecision.NO_TRADE
+
+            verdict_str = result.get("verdict", "stub")
+            verdict = AnalystVerdict.STUB
+            if verdict_str == "support":
+                verdict = AnalystVerdict.SUPPORT
+            elif verdict_str == "caution":
+                verdict = AnalystVerdict.CAUTION
+            elif verdict_str == "reject":
+                verdict = AnalystVerdict.REJECT
+
+            tier_str = result.get("tier", "NONE")
+            tier = TradeTier.NONE
+            if tier_str == "A_PLUS":
+                tier = TradeTier.A_PLUS
+            elif tier_str == "A":
+                tier = TradeTier.A
+            elif tier_str == "B":
+                tier = TradeTier.B
+            elif tier_str == "C":
+                tier = TradeTier.C
+
+            return AnalystResponse(
+                provider="yandexgpt",
+                decision=decision,
+                verdict=verdict,
+                ticker=result.get("ticker"),
+                side=result.get("side"),
+                timeframe=result.get("timeframe"),
+                tier=tier,
+                confidence=result.get("metrics", {}).get("confidence", 0),
+                expected_r=result.get("metrics", {}).get("expected_R"),
+                expected_pnl_pct=result.get("metrics", {}).get("expected_pnl_pct"),
+                entry_price=result.get("entry", {}).get("price"),
+                stop_price=result.get("stop_loss", {}).get("price"),
+                take_prices=[tp.get("price") for tp in result.get("take_profit", []) if tp.get("price")],
+                news_risk=result.get("news_risk", "unknown"),
+                reasoning=result.get("reasoning_bullets", []),
+                invalidations=result.get("invalidations", []),
+                raw_response=result,
+            )
+        except Exception as e:
+            logger.error(f"YandexGPT error: {e}")
+            return AnalystResponse(
+                provider="yandexgpt",
+                decision=AnalystDecision.NO_TRADE,
+                verdict=AnalystVerdict.REJECT,
+                reasoning=[f"YandexGPT error: {str(e)}"],
+            )
 
     def _call_perplexity(self, state_json: Dict) -> AnalystResponse:
         """Call Perplexity analyst (News & Fact Check)."""
