@@ -1,0 +1,71 @@
+# MOEX Agent — Docker Compose для локального тестирования
+# Запуск: docker-compose -f deploy/docker-compose.yml up --build
+#
+# Использует локальный PostgreSQL для тестирования перед деплоем в Yandex Cloud.
+
+version: "3.8"
+
+services:
+  # PostgreSQL для локального тестирования
+  postgres:
+    image: postgres:15-alpine
+    container_name: moex-postgres
+    environment:
+      POSTGRES_USER: moexagent
+      POSTGRES_PASSWORD: localdev123
+      POSTGRES_DB: moexdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moexagent -d moexdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MOEX Agent Application
+  moex-agent:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: moex-agent
+    ports:
+      - "8080:8080"
+    environment:
+      # PostgreSQL connection (локальный)
+      DATABASE_URL: postgresql://moexagent:localdev123@postgres:5432/moexdb
+
+      # Telegram (установите свои значения)
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+
+      # Application
+      PORT: 8080
+      PYTHONUNBUFFERED: 1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      # Persist data locally
+      - ../data:/app/data
+      - ../models:/app/models
+    restart: unless-stopped
+
+  # Опционально: pgAdmin для управления БД
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: moex-pgadmin
+    profiles:
+      - tools  # Запускается только с: docker-compose --profile tools up
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@moex.local
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
+    name: moex-postgres-data
