@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -145,6 +146,20 @@ class ModelRegistry:
                 logger.debug(f"Loaded model: {horizon} from {model_path}")
             except Exception as e:
                 logger.error(f"Failed to load model {horizon}: {e}")
+
+        # Backward-compatibility: if models exist on disk but are missing in
+        # metadata, still expose them to runtime.
+        for model_path in self.models_dir.glob("model_time_*.joblib"):
+            horizon = re.sub(r"^model_time_", "", model_path.stem)
+            if horizon in self._models:
+                continue
+            try:
+                self._models[horizon] = joblib.load(model_path)
+                logger.warning(
+                    f"Loaded model '{horizon}' without meta.json entry: {model_path}"
+                )
+            except Exception as e:
+                logger.error(f"Failed to load orphan model {model_path}: {e}")
 
         self._loaded = True
         logger.info(f"Loaded {len(self._models)} models: {list(self._models.keys())}")
