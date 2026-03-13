@@ -143,7 +143,13 @@ def get_max_ts(conn: sqlite3.Connection, table: str = "candles") -> Optional[str
     Returns:
         ISO timestamp string or None if table is empty
     """
-    cur = conn.execute(f"SELECT MAX(ts) as max_ts FROM {table}")
+    try:
+        cur = conn.execute(f"SELECT MAX(ts) as max_ts FROM {table}")
+    except sqlite3.OperationalError as e:
+        if "no such table" in str(e).lower():
+            logger.warning(f"Table '{table}' does not exist yet")
+            return None
+        raise
     row = cur.fetchone()
     return row["max_ts"] if row and row["max_ts"] else None
 

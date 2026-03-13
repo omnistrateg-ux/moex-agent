@@ -29,8 +29,8 @@ cp config.example.yaml config.yaml
 # 3. Initialize database
 python -m moex_agent init-db
 
-# 4. Load historical data (180 days)
-python -m moex_agent bootstrap --days 180
+# 4. Initialize local runtime baseline
+python -m moex_agent bootstrap
 
 # 5. Train ML models
 python -m moex_agent train
@@ -46,13 +46,32 @@ python -m moex_agent web --port 8000
 
 ```bash
 python -m moex_agent init-db              # Initialize database schema
-python -m moex_agent bootstrap --days 180 # Load historical candle data
+python -m moex_agent bootstrap            # Initialize local runtime baseline
 python -m moex_agent train                # Train ML models
 python -m moex_agent live                 # Run live signal generation
 python -m moex_agent live --once          # Run one cycle and exit
 python -m moex_agent web --port 8000      # Start web dashboard
 python -m moex_agent telegram-test "msg"  # Test Telegram integration
 python -m moex_agent status               # Show system status
+python -m moex_agent repair               # Repair doctor-detected inconsistencies
+python -m moex_agent create-agent --name "Momentum Scout" --role "Ищет импульсные входы" --agent-type strategy --timeframe 5m
+python -m moex_agent create-agent-bundle --name "Momentum ML Agent" --role "Прогнозирует long/short вероятности" --agent-type ml --timeframe 5m --output-dir ./agents
+python -m moex_agent agents-check --agents-dir agents
+python -m moex_agent agents-dry-run --agents-dir agents
+python -m moex_agent validate-agent-spec --config agents/momentum-scout.json
+python -m moex_agent create-system --preset core_moex_v1 --output-dir ./system
+python -m moex_agent show-system --registry ./system/registry.json
+python -m moex_agent export-system --registry ./system/registry.json --out ./snapshot.json
+python -m moex_agent import-system --snapshot ./snapshot.json --output-dir ./imported-system
+python -m moex_agent validate-snapshot --snapshot ./snapshot.json
+python -m moex_agent migrate-snapshot --snapshot ./snapshot.json --out ./snapshot.migrated.json
+python -m moex_agent diff-snapshot --left ./snapshot.json --right ./snapshot.migrated.json
+python -m moex_agent diff-system --left ./system --right ./imported-system
+python -m moex_agent check-compatibility --registry ./system
+python -m moex_agent orchestrate --dry-run --registry ./system/registry.json
+python -m moex_agent orchestrate --simulate --registry ./system/registry.json
+python -m moex_agent orchestrate --simulate --runtime-mode real --registry ./system/registry.json
+python -m moex_agent orchestrate --simulate --runtime-mode real --with-sample-data --registry ./system/registry.json
 ```
 
 ## Configuration

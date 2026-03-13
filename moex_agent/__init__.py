@@ -6,7 +6,7 @@ predicts continuation probability via ML models, and sends alerts to Telegram.
 
 Usage:
     python -m moex_agent init-db
-    python -m moex_agent bootstrap --days 180
+    python -m moex_agent bootstrap
     python -m moex_agent train
     python -m moex_agent live
     python -m moex_agent web --port 8000
